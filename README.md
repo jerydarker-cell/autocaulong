@@ -1,15 +1,22 @@
-# Badminton Vinh Production Ready v1.1
+# Badminton Vinh Production Ready v1.2 Cloud Login
 
-Bản nâng cấp nhỏ tập trung vào dùng thật:
+Bản v1.2 tập trung vào dùng thật hơn:
 
-- Manage app theo vai trò: Người dùng / Chủ sân / Admin.
-- Dữ liệu sân thật TP Vinh: thêm, sửa, import CSV, checklist dữ liệu.
-- Luồng đặt sân vẫn đơn giản và có kiểm tra trùng giờ.
-- Quản lý trạng thái đặt lịch và cọc/thanh toán demo.
-- AI Ops v1.1 gọn hơn: kế hoạch hôm nay, task tự động, marketing, risk guard, chat offline.
-- Cloud Production Plan: hướng dẫn chuyển sang Supabase khi public thật.
-- Public Launch Checklist: kiểm tra trước khi chia sẻ link.
-- Backup/Restore JSON, Health Check, SQLite local chạy ngay.
+- Đăng nhập email/password.
+- Đăng ký tài khoản người chơi/chủ sân.
+- Phân quyền giao diện: Người dùng / Chủ sân / Admin.
+- Admin quản lý tài khoản và đổi role.
+- Đặt sân Pro có tên, SĐT, tiền cọc, mã giao dịch.
+- Backup/Restore JSON.
+- Supabase Cloud Snapshot Sync tùy chọn.
+- Vẫn chạy ngay bằng SQLite local.
+- AI vận hành offline-first, không tốn API.
+
+## Tài khoản demo
+
+- player@badmintonvinh.local / player123
+- owner@badmintonvinh.local / owner123
+- admin@badmintonvinh.local / admin123
 
 ## Chạy local
 
@@ -20,8 +27,23 @@ streamlit run app.py
 
 ## Deploy Streamlit Cloud
 
-Upload toàn bộ file trong thư mục này lên GitHub sao cho `app.py` nằm ngoài cùng repo, sau đó Streamlit Cloud chọn `app.py`.
+Upload toàn bộ thư mục lên GitHub. Repo cần thấy trực tiếp:
 
-## Lưu ý production
+```text
+app.py
+requirements.txt
+.streamlit/
+SUPABASE_V1_2_SQL.sql
+STREAMLIT_SECRETS_V1_2_TEMPLATE.toml
+```
 
-SQLite phù hợp demo/local. Nếu public cho nhiều người dùng thật, nên chuyển dữ liệu chính sang Supabase hoặc database cloud.
+Streamlit Cloud chọn `app.py` làm main file path.
+
+## Supabase Sync
+
+1. Tạo Supabase project.
+2. Chạy file `SUPABASE_V1_2_SQL.sql` trong SQL Editor.
+3. Dán nội dung `STREAMLIT_SECRETS_V1_2_TEMPLATE.toml` vào Streamlit Secrets và thay key thật.
+4. Vào app > Admin > Cloud Login & Sync để push/pull snapshot.
+
+Không commit `SUPABASE_SERVICE_ROLE_KEY` lên GitHub.
