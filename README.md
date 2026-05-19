@@ -1,6 +1,6 @@
-# Badminton Vinh Production Ready v1.2 Cloud Login
+# Badminton Vinh Production Ready v1.2.1 Cloud Login
 
-Bản v1.2 tập trung vào dùng thật hơn:
+Bản v1.2.1 tập trung vào dùng thật hơn:
 
 - Đăng nhập email/password.
 - Đăng ký tài khoản người chơi/chủ sân.
@@ -47,3 +47,17 @@ Streamlit Cloud chọn `app.py` làm main file path.
 4. Vào app > Admin > Cloud Login & Sync để push/pull snapshot.
 
 Không commit `SUPABASE_SERVICE_ROLE_KEY` lên GitHub.
+
+
+## v1.2.1 Home Chat Board
+
+Bản này thêm bảng chat online ngay tại trang chủ:
+
+- Phòng chat: Toàn cộng đồng, Tìm kèo, Đặt sân, Mua bán, Góp ý app.
+- Người chơi / chủ sân / admin đều chat được sau khi đăng nhập.
+- Admin có thể ẩn tin nhắn không phù hợp.
+- Nếu Supabase đã cấu hình và chạy SQL, chat đồng bộ cloud qua bảng `badminton_chat_messages`.
+- Nếu chưa cấu hình Supabase, chat vẫn lưu local bằng SQLite để test/demo.
+
+### SQL cần chạy thêm trong Supabase
+Mở `SUPABASE_V1_2_SQL.sql` và chạy lại trong Supabase SQL Editor. File đã có thêm bảng `badminton_chat_messages`.

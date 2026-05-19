@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Badminton Vinh Production Ready v1.2 Cloud Login
+"""Badminton Vinh Production Ready v1.2.1 Home Chat
 Chạy: streamlit run app.py
 Một file độc lập: đăng nhập thật, phân quyền, đặt sân, chủ sân, admin, backup/cloud sync, AI vận hành offline.
 """
@@ -18,9 +18,9 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 import streamlit as st
 
-APP_NAME = "Badminton Vinh Production Ready v1.2 Cloud Login"
-APP_VERSION = "1.2 Cloud Login"
-DB_PATH = Path("badminton_vinh_v1_2_cloud_login.sqlite3")
+APP_NAME = "Badminton Vinh Production Ready v1.2.1 Home Chat"
+APP_VERSION = "1.2.1 Home Chat"
+DB_PATH = Path("badminton_vinh_v1_2_1_home_chat.sqlite3")
 
 # ========================= UI =========================
 
@@ -37,7 +37,7 @@ def css() -> None:
     .pill{display:inline-flex;align-items:center;gap:6px;padding:7px 11px;border-radius:999px;font-weight:800;font-size:.78rem;margin:3px 4px 3px 0;border:1px solid var(--line)}.green{background:rgba(34,197,94,.12);color:#86efac;border-color:rgba(34,197,94,.28)}.blue{background:rgba(56,189,248,.12);color:#7dd3fc;border-color:rgba(56,189,248,.28)}.yellow{background:rgba(245,158,11,.12);color:#fcd34d;border-color:rgba(245,158,11,.28)}.red{background:rgba(239,68,68,.12);color:#fca5a5;border-color:rgba(239,68,68,.28)}.purple{background:rgba(139,92,246,.12);color:#c4b5fd;border-color:rgba(139,92,246,.28)}
     .row-card{background:linear-gradient(180deg,#0e1b2b,#0b1422);border:1px solid #1e3350;border-radius:22px;padding:14px;margin:10px 0}.price{font-size:1.15rem;font-weight:950;color:#86efac}.safe{border-left:4px solid var(--green);background:rgba(34,197,94,.08);padding:10px 12px;border-radius:12px}.warn{border-left:4px solid var(--yellow);background:rgba(245,158,11,.08);padding:10px 12px;border-radius:12px}.bad{border-left:4px solid var(--red);background:rgba(239,68,68,.08);padding:10px 12px;border-radius:12px}
     .stButton>button{border-radius:16px!important;min-height:42px;font-weight:850!important;border:1px solid #24405f!important;background:#10233a!important;color:#eef7ff!important}.stButton>button:hover{border-color:#22c55e!important;color:#86efac!important}
-    .mobile-note{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);z-index:999;background:rgba(8,15,28,.9);border:1px solid #24405f;border-radius:999px;padding:8px 14px;color:#dbeafe;font-size:.8rem;backdrop-filter:blur(8px)}
+    .chat-box{background:linear-gradient(180deg,#0b1422,#08101d);border:1px solid #1f334d;border-radius:24px;padding:14px;margin-top:14px;max-height:520px;overflow-y:auto}.chat-msg{border:1px solid #223955;border-radius:18px;padding:10px 12px;margin:9px 0;background:#0f1d31}.chat-own{background:linear-gradient(180deg,#12331f,#0d2417);border-color:rgba(34,197,94,.35)}.chat-admin{background:linear-gradient(180deg,#2a1744,#171027);border-color:rgba(139,92,246,.42)}.chat-meta{font-size:.78rem;color:#9fb3c8;margin-bottom:4px}.chat-text{font-size:.97rem;color:#eef7ff;line-height:1.45}.chat-room{display:inline-flex;padding:5px 9px;border-radius:999px;background:rgba(56,189,248,.11);border:1px solid rgba(56,189,248,.22);font-size:.72rem;color:#7dd3fc;margin-left:6px}.mobile-note{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);z-index:999;background:rgba(8,15,28,.9);border:1px solid #24405f;border-radius:999px;padding:8px 14px;color:#dbeafe;font-size:.8rem;backdrop-filter:blur(8px)}
     @media(max-width:850px){.main .block-container{padding-left:.7rem;padding-right:.7rem}.hero{padding:16px;border-radius:22px}.hero-title{font-size:1.45rem}.grid4,.grid3,.grid2{grid-template-columns:1fr}.card{padding:13px;border-radius:20px}.big{font-size:1.35rem}.pill{font-size:.72rem;padding:6px 9px}}
     </style>
     """, unsafe_allow_html=True)
@@ -116,6 +116,10 @@ def init_db() -> None:
         CREATE TABLE IF NOT EXISTS feedback(id TEXT PRIMARY KEY,user_id TEXT,category TEXT,message TEXT,status TEXT,created_at TEXT);
         CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY,title TEXT,owner TEXT,priority TEXT,status TEXT,due_date TEXT,source TEXT,created_at TEXT);
         CREATE TABLE IF NOT EXISTS sync_logs(id TEXT PRIMARY KEY, action TEXT, status TEXT, message TEXT, created_at TEXT);
+        CREATE TABLE IF NOT EXISTS chat_messages(
+            id TEXT PRIMARY KEY, room TEXT, user_id TEXT, user_name TEXT, role TEXT, message TEXT,
+            is_deleted INTEGER DEFAULT 0, created_at TEXT
+        );
         """)
         c.commit()
     seed()
@@ -299,6 +303,120 @@ def ai_answer(prompt: str) -> str:
         return "Tránh trùng lịch bằng cách kiểm tra sân + ngày + giờ trước khi ghi booking. Chủ sân xác nhận rồi mới xem là chắc lịch."
     return "Gợi ý: giữ luồng đặt sân thật đơn giản, dữ liệu sân thật đầy đủ, ưu tiên mobile, dùng AI offline để tạo task hàng ngày."
 
+
+# ========================= HOME CHAT BOARD =========================
+
+CHAT_ROOMS = ["Toàn cộng đồng", "Tìm kèo", "Đặt sân", "Mua bán", "Góp ý app"]
+
+def _escape_html(text: Any) -> str:
+    import html
+    return html.escape(str(text or "")).replace("\n", "<br>")
+
+def chat_supabase_available() -> bool:
+    return supabase_configured()
+
+def chat_insert(room: str, message: str, u: sqlite3.Row) -> Tuple[bool, str]:
+    text = (message or "").strip()
+    if not text:
+        return False, "Bạn chưa nhập nội dung chat."
+    if len(text) > 600:
+        return False, "Tin nhắn tối đa 600 ký tự để bảng chat gọn và dễ đọc."
+    payload = {
+        "id": str(uuid.uuid4()),
+        "room": room,
+        "user_id": u["id"],
+        "user_name": u["name"],
+        "role": u["role"],
+        "message": text,
+        "is_deleted": 0,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    # Ghi local trước để app luôn dùng được, kể cả chưa có cloud.
+    execute("INSERT INTO chat_messages VALUES (?,?,?,?,?,?,?,?)", (payload["id"], payload["room"], payload["user_id"], payload["user_name"], payload["role"], payload["message"], payload["is_deleted"], payload["created_at"]))
+    # Nếu Supabase đã cấu hình và đã tạo bảng badminton_chat_messages, đồng bộ thêm lên cloud.
+    if chat_supabase_available():
+        try:
+            import requests
+            url = secrets_get("SUPABASE_URL").rstrip("/") + "/rest/v1/badminton_chat_messages"
+            r = requests.post(url, headers=supabase_headers(), json=payload, timeout=15)
+            if r.status_code >= 300:
+                return True, "Đã gửi chat local. Cloud chat chưa đồng bộ được, kiểm tra bảng badminton_chat_messages trong Supabase."
+        except Exception:
+            return True, "Đã gửi chat local. Cloud chat tạm thời chưa đồng bộ."
+    return True, "Đã gửi tin nhắn."
+
+def chat_fetch(room: str, limit: int = 40) -> List[Dict[str, Any]]:
+    # Ưu tiên lấy cloud nếu Supabase chat đã cấu hình; nếu lỗi thì fallback local.
+    if chat_supabase_available():
+        try:
+            import requests
+            url = secrets_get("SUPABASE_URL").rstrip("/") + f"/rest/v1/badminton_chat_messages?room=eq.{room}&is_deleted=eq.0&order=created_at.desc&limit={int(limit)}"
+            r = requests.get(url, headers=supabase_headers(), timeout=15)
+            if r.status_code < 300:
+                arr = r.json()
+                return list(reversed(arr))
+        except Exception:
+            pass
+    rows = q("SELECT * FROM chat_messages WHERE room=? AND is_deleted=0 ORDER BY created_at DESC LIMIT ?", (room, int(limit)))
+    return list(reversed([dict(r) for r in rows]))
+
+def chat_delete(message_id: str) -> None:
+    execute("UPDATE chat_messages SET is_deleted=1 WHERE id=?", (message_id,))
+    if chat_supabase_available():
+        try:
+            import requests
+            url = secrets_get("SUPABASE_URL").rstrip("/") + f"/rest/v1/badminton_chat_messages?id=eq.{message_id}"
+            requests.patch(url, headers=supabase_headers(), json={"is_deleted": 1}, timeout=10)
+        except Exception:
+            pass
+
+def render_home_chat() -> None:
+    u = current_user()
+    st.markdown("### 💬 Bảng chat cộng đồng")
+    st.caption("Chat nhanh ngay trang chủ: hỏi sân, tìm kèo, mua bán dụng cụ, góp ý app. Nếu cấu hình Supabase, chat sẽ đồng bộ cloud; nếu chưa, app vẫn lưu local.")
+    c1, c2, c3 = st.columns([1.2, 0.8, 0.6])
+    with c1:
+        room = st.selectbox("Phòng chat", CHAT_ROOMS, key="home_chat_room")
+    with c2:
+        limit = st.selectbox("Số tin hiển thị", [20, 40, 80], index=1, key="chat_limit")
+    with c3:
+        if st.button("🔄 Làm mới", use_container_width=True):
+            st.rerun()
+    with st.form("home_chat_form", clear_on_submit=True):
+        msg = st.text_area("Nhập tin nhắn", placeholder="Ví dụ: Tối nay ai đánh ở Trung Đô không?", height=82, max_chars=600)
+        col_a, col_b = st.columns([0.65, 0.35])
+        with col_a:
+            st.caption("Quy tắc: lịch sự, không spam, không đăng số tài khoản/API key/mật khẩu, mua bán tự chịu trách nhiệm kiểm tra.")
+        with col_b:
+            submitted = st.form_submit_button("📨 Gửi chat", type="primary", use_container_width=True)
+        if submitted:
+            ok, text = chat_insert(room, msg, u)
+            st.success(text) if ok else st.error(text)
+            if ok:
+                st.rerun()
+    messages = chat_fetch(room, limit)
+    if not messages:
+        st.info("Phòng này chưa có tin nhắn. Bạn có thể là người mở lời đầu tiên.")
+    else:
+        html_parts = ["<div class='chat-box'>"]
+        for m in messages:
+            own = str(m.get("user_id")) == str(u["id"])
+            role = str(m.get("role") or "player")
+            klass = "chat-msg chat-own" if own else ("chat-msg chat-admin" if role == "admin" else "chat-msg")
+            role_label = {"admin":"Admin", "owner":"Chủ sân", "player":"Người chơi"}.get(role, role)
+            html_parts.append(
+                f"<div class='{klass}'><div class='chat-meta'><b>{_escape_html(m.get('user_name'))}</b> · {role_label} <span class='chat-room'>{_escape_html(m.get('room'))}</span> · {_escape_html(m.get('created_at'))}</div><div class='chat-text'>{_escape_html(m.get('message'))}</div></div>"
+            )
+        html_parts.append("</div>")
+        st.markdown("".join(html_parts), unsafe_allow_html=True)
+        if u["role"] == "admin":
+            with st.expander("👑 Admin quản lý chat"):
+                opts = [(m.get("id"), f"{m.get('created_at')} · {m.get('user_name')}: {str(m.get('message'))[:70]}") for m in messages]
+                if opts:
+                    chosen = st.selectbox("Chọn tin cần ẩn", list(range(len(opts))), format_func=lambda i: opts[i][1])
+                    if st.button("Ẩn tin nhắn này"):
+                        chat_delete(opts[int(chosen)][0]); st.success("Đã ẩn tin nhắn."); st.rerun()
+
 # ========================= PAGES =========================
 
 def page_home() -> None:
@@ -313,6 +431,7 @@ def page_home() -> None:
     st.markdown("### 🤖 Gợi ý AI hôm nay")
     for r in ai_recommendations()[:3]:
         status(f"<b>{r['title']}</b> · {r['body']} <span class='pill yellow'>{r['priority']}</span>", "warn" if r["priority"]=="Cao" else "safe")
+    render_home_chat()
 
 def page_booking() -> None:
     hero("📅 Đặt sân Pro", "Luồng mobile ngắn: chọn sân → ngày/giờ → SĐT → xác nhận. Có cọc, mã giao dịch, trạng thái rõ.")
@@ -559,7 +678,7 @@ def page_user_admin() -> None:
                 execute("UPDATE users SET role=?, is_active=? WHERE id=?", (role,1 if active else 0,u["id"])); st.success("Đã lưu."); st.rerun()
 
 def export_payload() -> Dict[str, Any]:
-    tables=["users","courts","bookings","products","matches","memberships","checkins","notifications","feedback","tasks"]
+    tables=["users","courts","bookings","products","matches","memberships","checkins","notifications","feedback","tasks","chat_messages"]
     return {"app":APP_NAME,"version":APP_VERSION,"exported_at":datetime.now().isoformat(timespec="seconds"),"tables":{t:[dict(r) for r in q(f"SELECT * FROM {t}")] for t in tables}}
 
 def restore_payload(payload: Dict[str, Any]) -> Tuple[bool, str]:
@@ -568,7 +687,7 @@ def restore_payload(payload: Dict[str, Any]) -> Tuple[bool, str]:
     with conn() as c:
         cur=c.cursor()
         for table, rows in tables.items():
-            if table not in {"users","courts","bookings","products","matches","memberships","checkins","notifications","feedback","tasks"}: continue
+            if table not in {"users","courts","bookings","products","matches","memberships","checkins","notifications","feedback","tasks","chat_messages"}: continue
             cols=[r["name"] for r in cur.execute(f"PRAGMA table_info({table})").fetchall()]
             cur.execute(f"DELETE FROM {table}")
             for row in rows:
@@ -651,7 +770,19 @@ USE_EXTERNAL_AI = "false"''', language="toml")
   payload jsonb not null,
   created_at timestamptz default now()
 );
-create index if not exists badminton_snapshots_space_created_idx on badminton_snapshots(space, created_at desc);''', language="sql")
+create index if not exists badminton_snapshots_space_created_idx on badminton_snapshots(space, created_at desc);
+
+create table if not exists badminton_chat_messages (
+  id uuid primary key,
+  room text not null,
+  user_id text,
+  user_name text,
+  role text,
+  message text not null,
+  is_deleted int default 0,
+  created_at timestamptz default now()
+);
+create index if not exists badminton_chat_room_created_idx on badminton_chat_messages(room, created_at desc);''', language="sql")
 
 def page_health() -> None:
     hero("🩺 Health Check", "Kiểm tra app trước khi public và sau khi deploy Streamlit Cloud.")
