@@ -14,6 +14,8 @@ import json
 import os
 import sqlite3
 import uuid
+import urllib.request
+import urllib.error
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, time
 from pathlib import Path
@@ -22,9 +24,9 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 import streamlit as st
 
-APP_NAME = "Badminton Vinh AI Automation Ultra"
-APP_VERSION = "5.0 AI Automation Ultra"
-DB_PATH = Path("badminton_vinh_ai_automation_ultra.sqlite3")
+APP_NAME = "Badminton Vinh AI Automation Enterprise Sync"
+APP_VERSION = "6.0 Enterprise AI Automation Sync"
+DB_PATH = Path("badminton_vinh_ai_enterprise_sync.sqlite3")
 
 # -----------------------------
 # UI / STYLE
@@ -213,6 +215,9 @@ def init_db() -> None:
         CREATE TABLE IF NOT EXISTS notifications(
             id TEXT PRIMARY KEY, user_id TEXT, title TEXT, body TEXT, kind TEXT, is_read INTEGER DEFAULT 0, created_at TEXT
         );
+        CREATE TABLE IF NOT EXISTS sync_events(
+            id TEXT PRIMARY KEY, mode TEXT, status TEXT, message TEXT, created_at TEXT
+        );
         CREATE TABLE IF NOT EXISTS favorites(
             id TEXT PRIMARY KEY, user_id TEXT, target_type TEXT, target_id TEXT, created_at TEXT
         );
@@ -346,6 +351,53 @@ def execute(sql: str, params: Tuple = ()) -> None:
 
 def now() -> str:
     return datetime.now().isoformat(timespec="seconds")
+
+
+def row_to_dict(row: Any) -> Dict[str, Any]:
+    """Convert sqlite3.Row / dict / object into a plain dict for stable Streamlit rendering."""
+    if row is None:
+        return {}
+    if isinstance(row, dict):
+        return row
+    try:
+        return {k: row[k] for k in row.keys()}
+    except Exception:
+        try:
+            return dict(row)
+        except Exception:
+            return {"value": str(row)}
+
+
+def safe_select_row(label: str, rows: List[Any], format_func=None, key: Optional[str] = None, help: Optional[str] = None):
+    """Select a sqlite row safely on Streamlit Cloud.
+
+    Streamlit can fail when sqlite3.Row objects are used directly as selectbox options.
+    This function only passes integer indexes to the widget, then maps back to the row.
+    """
+    rows = list(rows or [])
+    if not rows:
+        return None
+    def _label(idx: int) -> str:
+        try:
+            item = rows[idx]
+            if format_func:
+                text = format_func(item)
+            else:
+                d = row_to_dict(item)
+                text = d.get("name") or d.get("title") or d.get("court_name") or d.get("id") or f"Mục {idx+1}"
+            return str(text) if text is not None else f"Mục {idx+1}"
+        except Exception:
+            return f"Mục {idx+1}"
+    idx = st.selectbox(label, list(range(len(rows))), format_func=_label, key=key, help=help)
+    return rows[int(idx)]
+
+
+def safe_error(message: str, detail: str = "") -> None:
+    st.error(message)
+    if detail:
+        with st.expander("Chi tiết kỹ thuật dành cho admin"):
+            st.code(detail)
+
 
 # -----------------------------
 # SESSION / USER
@@ -849,7 +901,7 @@ def page_membership() -> None:
         ("Gói CLB tháng", 16, 1150000, "Cho nhóm chơi thường xuyên"),
     ]
     courts = q("SELECT * FROM courts WHERE status='active'")
-    court = st.selectbox("Chọn sân áp dụng", courts, format_func=lambda r: r['name']) if courts else None
+    court = safe_select_row("Chọn sân áp dụng", courts, lambda r: row_to_dict(r).get('name', 'Sân'), key="membership_court") if courts else None
     cols = st.columns(3)
     for i, (name, sessions, price, desc) in enumerate(packages):
         with cols[i]:
@@ -875,7 +927,7 @@ def page_checkin() -> None:
     if not bookings:
         st.info("Bạn chưa có lịch đặt sân để check-in.")
         return
-    b = st.selectbox("Chọn lịch", bookings, format_func=lambda r: f"{r['booking_date']} {r['start_time']} · {r['court_name']}")
+    b = safe_select_row("Chọn lịch", bookings, lambda r: f"{row_to_dict(r).get('booking_date')} {row_to_dict(r).get('start_time')} · {row_to_dict(r).get('court_name')}", key="checkin_booking")
     note = st.text_area("Ghi chú buổi chơi", value="Hôm nay đánh ổn, cần cải thiện bộ chân và phát cầu.")
     if st.button("✅ Check-in buổi chơi", use_container_width=True):
         execute("INSERT INTO checkins VALUES (?,?,?,?,?,?)", (str(uuid.uuid4()), st.session_state.user_id, b['id'], b['court_id'], note, now()))
@@ -957,7 +1009,7 @@ def page_owner_portal() -> None:
     if not courts:
         st.warning("Chưa có sân.")
         return
-    court = st.selectbox("Chọn sân quản lý", courts, format_func=lambda r: r['name'])
+    court = safe_select_row("Chọn sân quản lý", courts, lambda r: row_to_dict(r).get('name', 'Sân'), key="owner_court")
     bookings = q("SELECT * FROM bookings WHERE court_id=? ORDER BY booking_date DESC,start_time DESC", (court['id'],))
     col1, col2, col3 = st.columns(3)
     with col1: metric_card("Tổng lịch", len(bookings), "booking")
@@ -1059,7 +1111,7 @@ def page_qr_checkin() -> None:
     code=f"BDM-{st.session_state.user_id[-6:].upper()}-{datetime.now().strftime('%H%M')}"
     st.markdown(f"<div class='qr-box'>🏸<br>{code}<br><span style='font-size:.8rem'>Mã check-in demo</span></div>", unsafe_allow_html=True)
     courts=q("SELECT * FROM courts WHERE status='active'")
-    court=st.selectbox("Check-in tại sân", courts, format_func=lambda r: r['name']) if courts else None
+    court=safe_select_row("Check-in tại sân", courts, lambda r: row_to_dict(r).get('name', 'Sân'), key="qr_court") if courts else None
     note=st.text_input("Ghi chú", value="Check-in QR demo")
     if st.button("✅ Xác nhận check-in QR", use_container_width=True):
         if court:
@@ -1546,9 +1598,450 @@ ENABLE_AI_RISK_GUARD="true""", language='toml')
         execute("INSERT INTO ai_logs VALUES (?,?,?,?)", (str(uuid.uuid4()), 'settings', f'AI mode viewed: {mode}', now()))
         st.success("Đã ghi log.")
 
+
+
+# -----------------------------
+# PERSISTENT CLOUD SYNC
+# -----------------------------
+
+SYNC_TABLES = [
+    "users", "courts", "bookings", "products", "orders", "reviews", "notifications",
+    "favorites", "coaches", "training_plans", "tournaments", "memberships", "checkins",
+    "feedback", "ai_tasks", "ai_logs", "sync_events"
+]
+
+
+def _table_columns(table: str) -> List[str]:
+    try:
+        return [r[1] for r in q(f"PRAGMA table_info({table})")]
+    except Exception:
+        return []
+
+
+def export_snapshot() -> Dict[str, Any]:
+    data: Dict[str, Any] = {"app_name": APP_NAME, "app_version": APP_VERSION, "exported_at": now(), "tables": {}}
+    for table in SYNC_TABLES:
+        if table_exists(table):
+            data["tables"][table] = [row_to_dict(r) for r in q(f"SELECT * FROM {table}")]
+    return data
+
+
+def restore_snapshot(snapshot: Dict[str, Any], replace_existing: bool = False) -> Tuple[int, List[str]]:
+    restored = 0
+    warnings: List[str] = []
+    tables = snapshot.get("tables", {}) if isinstance(snapshot, dict) else {}
+    for table, rows in tables.items():
+        if table not in SYNC_TABLES or not table_exists(table):
+            warnings.append(f"Bỏ qua bảng không hỗ trợ hoặc chưa tồn tại: {table}")
+            continue
+        cols = _table_columns(table)
+        if not cols:
+            warnings.append(f"Không đọc được cột bảng: {table}")
+            continue
+        if replace_existing:
+            try:
+                execute(f"DELETE FROM {table}")
+            except Exception as e:
+                warnings.append(f"Không xóa được bảng {table}: {e}")
+        for row in rows or []:
+            if not isinstance(row, dict):
+                continue
+            clean = {k: row.get(k) for k in cols if k in row}
+            if not clean:
+                continue
+            if "id" in cols and not clean.get("id"):
+                clean["id"] = str(uuid.uuid4())
+            placeholders = ",".join(["?"] * len(clean))
+            col_sql = ",".join(clean.keys())
+            try:
+                execute(f"INSERT OR REPLACE INTO {table} ({col_sql}) VALUES ({placeholders})", tuple(clean.values()))
+                restored += 1
+            except Exception as e:
+                warnings.append(f"Lỗi khôi phục {table}: {e}")
+    execute("INSERT INTO sync_events VALUES (?,?,?,?,?)", (str(uuid.uuid4()), "restore", "ok", f"Restored {restored} rows", now()))
+    return restored, warnings
+
+
+def supabase_config() -> Tuple[str, str, str]:
+    url = str(st.secrets.get("SUPABASE_URL", os.getenv("SUPABASE_URL", ""))).strip().rstrip("/")
+    key = str(st.secrets.get("SUPABASE_SERVICE_ROLE_KEY", os.getenv("SUPABASE_SERVICE_ROLE_KEY", ""))).strip()
+    space = str(st.secrets.get("SYNC_SPACE", os.getenv("SYNC_SPACE", "badminton-vinh"))).strip() or "badminton-vinh"
+    return url, key, space
+
+
+def _supabase_request(method: str, path: str, body: Optional[Dict[str, Any]] = None) -> Any:
+    url, key, _ = supabase_config()
+    if not url or not key:
+        raise RuntimeError("Thiếu SUPABASE_URL hoặc SUPABASE_SERVICE_ROLE_KEY trong Streamlit Secrets.")
+    req_url = f"{url}/rest/v1/{path}"
+    payload = None if body is None else json.dumps(body, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(req_url, data=payload, method=method)
+    req.add_header("apikey", key)
+    req.add_header("Authorization", f"Bearer {key}")
+    req.add_header("Content-Type", "application/json")
+    req.add_header("Prefer", "return=representation")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw = resp.read().decode("utf-8")
+            return json.loads(raw) if raw else None
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", errors="ignore")
+        raise RuntimeError(f"Supabase HTTP {e.code}: {detail}")
+
+
+def push_snapshot_to_supabase() -> str:
+    snapshot = export_snapshot()
+    _, _, space = supabase_config()
+    sid = str(uuid.uuid4())
+    payload = {"id": sid, "space": space, "app_name": APP_NAME, "app_version": APP_VERSION, "snapshot_json": snapshot, "created_at": now()}
+    _supabase_request("POST", "badminton_sync_snapshots", payload)
+    execute("INSERT INTO sync_events VALUES (?,?,?,?,?)", (str(uuid.uuid4()), "cloud_push", "ok", f"Snapshot {sid}", now()))
+    return sid
+
+
+def list_supabase_snapshots(limit: int = 10) -> List[Dict[str, Any]]:
+    _, _, space = supabase_config()
+    path = f"badminton_sync_snapshots?space=eq.{space}&select=id,space,app_version,created_at&order=created_at.desc&limit={limit}"
+    return _supabase_request("GET", path) or []
+
+
+def pull_snapshot_from_supabase(snapshot_id: str) -> Dict[str, Any]:
+    path = f"badminton_sync_snapshots?id=eq.{snapshot_id}&select=snapshot_json&limit=1"
+    rows = _supabase_request("GET", path) or []
+    if not rows:
+        raise RuntimeError("Không tìm thấy snapshot cloud đã chọn.")
+    return rows[0].get("snapshot_json") or {}
+
+
+def page_persistent_sync() -> None:
+    hero("☁️ Lưu trữ & đồng bộ vĩnh viễn", "Cloud Sync Pro: SQLite local + backup JSON + đồng bộ Supabase để dữ liệu không mất khi app reboot/deploy lại.")
+    st.warning("Không có lưu trữ 'vĩnh viễn tuyệt đối' nếu không có database/cloud. Bản này dùng Supabase Cloud Sync + backup JSON để dữ liệu bền vững và có thể khôi phục.")
+    snapshot = export_snapshot()
+    total_rows = sum(len(v) for v in snapshot.get("tables", {}).values())
+    url, key, space = supabase_config()
+    c1, c2, c3, c4 = st.columns(4)
+    with c1: metric_card("Bảng dữ liệu", len(snapshot.get("tables", {})), "đang backup")
+    with c2: metric_card("Dòng dữ liệu", total_rows, "local rows")
+    with c3: metric_card("Cloud", "Sẵn sàng" if url and key else "Chưa cấu hình", "Supabase")
+    with c4: metric_card("Sync Space", space, "namespace")
+    tabs = st.tabs(["💾 Backup local", "☁️ Supabase Sync", "♻️ Restore", "🩺 Sync Health", "📘 Hướng dẫn"])
+    with tabs[0]:
+        st.subheader("💾 Tải backup JSON")
+        st.caption("Nên tải backup trước khi sửa app, deploy bản mới, hoặc reset database.")
+        st.download_button("⬇️ Tải backup toàn bộ dữ liệu", data=json.dumps(snapshot, ensure_ascii=False, indent=2), file_name=f"badminton_vinh_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json", mime="application/json", use_container_width=True)
+        st.json({"app_version": snapshot.get("app_version"), "exported_at": snapshot.get("exported_at"), "tables": {k: len(v) for k, v in snapshot.get("tables", {}).items()}})
+    with tabs[1]:
+        st.subheader("☁️ Đồng bộ Supabase")
+        if not url or not key:
+            st.error("Chưa có SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY trong Secrets.")
+            st.info("Vào Streamlit Cloud → Manage app → Settings → Secrets, dán mẫu ở tab Hướng dẫn.")
+        else:
+            st.success("Đã thấy cấu hình Supabase trong Secrets.")
+            if st.button("☁️ Đẩy snapshot hiện tại lên Supabase", use_container_width=True):
+                try:
+                    sid = push_snapshot_to_supabase()
+                    st.success(f"Đã đồng bộ cloud thành công. Snapshot ID: {sid}")
+                except Exception as e:
+                    st.error("Không đẩy được snapshot lên Supabase.")
+                    st.code(str(e))
+            st.markdown("#### Snapshot gần nhất trên cloud")
+            try:
+                rows = list_supabase_snapshots(10)
+                if rows: st.dataframe(pd.DataFrame(rows), use_container_width=True)
+                else: st.info("Chưa có snapshot nào trên cloud.")
+            except Exception as e:
+                st.warning("Chưa đọc được danh sách snapshot. Có thể bạn chưa tạo bảng Supabase.")
+                st.code(str(e))
+    with tabs[2]:
+        st.subheader("♻️ Khôi phục dữ liệu")
+        st.markdown("##### Khôi phục từ file JSON")
+        uploaded = st.file_uploader("Chọn file backup JSON", type=["json"])
+        replace = st.checkbox("Xóa dữ liệu cũ trước khi khôi phục", value=False)
+        if uploaded and st.button("Khôi phục từ JSON", use_container_width=True):
+            try:
+                snap = json.loads(uploaded.read().decode("utf-8"))
+                count, warns = restore_snapshot(snap, replace_existing=replace)
+                st.success(f"Đã khôi phục {count} dòng dữ liệu.")
+                if warns: st.warning(warns[:20])
+            except Exception as e:
+                st.error("Không khôi phục được file JSON.")
+                st.code(str(e))
+        st.markdown("##### Khôi phục từ Supabase")
+        if url and key:
+            try:
+                rows = list_supabase_snapshots(20)
+                options = [r.get("id") for r in rows]
+                selected = st.selectbox("Chọn snapshot cloud", options) if options else None
+                replace_cloud = st.checkbox("Xóa dữ liệu cũ trước khi khôi phục cloud", value=False, key="replace_cloud")
+                if selected and st.button("⬇️ Kéo snapshot từ cloud về app", use_container_width=True):
+                    snap = pull_snapshot_from_supabase(selected)
+                    count, warns = restore_snapshot(snap, replace_existing=replace_cloud)
+                    st.success(f"Đã kéo cloud snapshot và khôi phục {count} dòng.")
+                    if warns: st.warning(warns[:20])
+            except Exception as e:
+                st.info("Chưa thể khôi phục từ cloud. Hãy kiểm tra bảng Supabase và Secrets.")
+                st.code(str(e))
+    with tabs[3]:
+        st.subheader("🩺 Sync Health")
+        checks = [("Local SQLite", DB_PATH.exists(), str(DB_PATH)), ("Có dữ liệu", total_rows > 0, f"{total_rows} dòng"), ("SUPABASE_URL", bool(url), "OK" if url else "Thiếu"), ("SUPABASE_SERVICE_ROLE_KEY", bool(key), "OK" if key else "Thiếu"), ("SYNC_SPACE", bool(space), space)]
+        for name, ok, detail in checks:
+            cls = 'status-ok' if ok else 'status-bad'
+            icon = '✅' if ok else '❌'
+            st.markdown(f"<div class='{cls}'><b>{icon} {name}</b><br><span class='muted'>{detail}</span></div>", unsafe_allow_html=True)
+        st.markdown("#### Lịch sử sync local")
+        if table_exists("sync_events"):
+            ev = [row_to_dict(r) for r in q("SELECT * FROM sync_events ORDER BY created_at DESC LIMIT 20")]
+            if ev: st.dataframe(pd.DataFrame(ev), use_container_width=True)
+            else: st.info("Chưa có sự kiện sync nào.")
+    with tabs[4]:
+        st.subheader("📘 Cấu hình Supabase để lưu lâu dài")
+        st.markdown("**Bước 1:** Tạo Supabase project. **Bước 2:** Vào SQL Editor, chạy SQL này:")
+        st.code("""create table if not exists public.badminton_sync_snapshots (
+  id text primary key,
+  space text not null,
+  app_name text,
+  app_version text,
+  snapshot_json jsonb not null,
+  created_at timestamptz default now()
+);
+create index if not exists badminton_sync_snapshots_space_created_idx
+on public.badminton_sync_snapshots (space, created_at desc);""", language="sql")
+        st.markdown("**Bước 3:** Vào Streamlit Secrets và dán:")
+        st.code("""SUPABASE_URL = "https://YOUR_PROJECT.supabase.co"
+SUPABASE_SERVICE_ROLE_KEY = "YOUR_SERVICE_ROLE_KEY"
+SYNC_SPACE = "badminton-vinh-production""", language="toml")
+        st.error("Không đưa SERVICE_ROLE_KEY lên GitHub. Chỉ để trong Streamlit Secrets.")
+
 # -----------------------------
 # ROUTER
 # -----------------------------
+
+
+def page_ai_super_automation_suite() -> None:
+    st.title("🧠 AI Super Automation Suite")
+    st.caption("Bản nâng cấp tự động hóa toàn diện: AI offline phân tích booking, khách hàng, doanh thu, sân, marketplace và tự tạo kế hoạch hành động.")
+    courts = q("SELECT * FROM courts")
+    bookings = q("SELECT * FROM bookings")
+    products = q("SELECT * FROM products")
+    users = q("SELECT * FROM users")
+    feedbacks = q("SELECT * FROM feedback WHERE status!='done'") if table_exists('feedback') else []
+    confirmed = [b for b in bookings if row_to_dict(b).get('status') == 'confirmed']
+    revenue = sum(int(row_to_dict(b).get('total') or 0) for b in confirmed)
+    fill_score = min(100, len(confirmed) * 8 + len(courts) * 5)
+    crm_score = min(100, len(users) * 12 + len(confirmed) * 3)
+    market_score = min(100, len(products) * 10)
+    risk_score = max(0, 100 - len(feedbacks) * 18)
+    automation_score = round((fill_score + crm_score + market_score + risk_score) / 4)
+    c1, c2, c3, c4 = st.columns(4)
+    with c1: metric_card("Automation Score", f"{automation_score}/100", "AI vận hành")
+    with c2: metric_card("Doanh thu demo", vnd(revenue), "confirmed")
+    with c3: metric_card("Booking", len(confirmed), "đã xác nhận")
+    with c4: metric_card("Cảnh báo", len(feedbacks), "feedback mở")
+    st.progress(automation_score/100)
+    if automation_score < 50:
+        st.warning("AI đánh giá hệ thống cần tối ưu dữ liệu sân, tăng booking và xử lý feedback trước khi public mạnh.")
+    elif automation_score < 80:
+        st.info("Hệ thống khá ổn. Nên chạy thêm automation giữ chân khách và lấp giờ thấp điểm.")
+    else:
+        st.success("Hệ thống sẵn sàng vận hành tốt. Có thể tập trung marketing và mở rộng cộng đồng.")
+
+    st.markdown("### 🤖 AI Agents tự động hóa")
+    agents = [
+        ("Growth Agent", "Tạo chiến dịch tăng đặt sân, ưu đãi giờ thấp điểm, kéo khách quay lại.", "Growth"),
+        ("Court Ops Agent", "Theo dõi khung giờ nóng/lạnh, gợi ý bảo trì đèn, lưới, thảm.", "Operations"),
+        ("CRM Agent", "Phân loại khách mới/VIP/ngủ đông và tạo hành động chăm sóc.", "CRM"),
+        ("Marketplace Agent", "Đẩy sản phẩm thiếu tương tác, tạo combo vợt + cầu + sân.", "Marketplace"),
+        ("Coach Agent", "Gợi ý lớp học, giáo án, ghép kèo theo trình độ.", "Training"),
+        ("Finance Agent", "Theo dõi doanh thu, gói hội viên, giá giờ hot/thấp điểm.", "Finance"),
+    ]
+    cols = st.columns(3)
+    for i, (name, desc, tag) in enumerate(agents):
+        with cols[i % 3]:
+            st.markdown(f"<div class='agent-card'><span class='pro-badge'>{tag}</span><h3>{name}</h3><p class='muted'>{desc}</p></div>", unsafe_allow_html=True)
+
+    st.markdown("### ✅ AI tự tạo kế hoạch hành động hôm nay")
+    plan = []
+    if len(courts) < 5:
+        plan.append(("Data", "Bổ sung thêm sân thật ở TP Vinh", "Thêm địa chỉ, SĐT, giá, số sân, tiện ích để tăng độ tin cậy."))
+    if len(confirmed) < 5:
+        plan.append(("Growth", "Tạo voucher lấp lịch đầu tuần", "Giảm 10–15% khung 9h–16h để có booking demo đều hơn."))
+    if len(products) < 8:
+        plan.append(("Marketplace", "Kích hoạt chợ dụng cụ", "Đăng thêm vợt, giày, cầu và combo cho người mới chơi."))
+    if feedbacks:
+        plan.append(("Support", "Xử lý feedback tồn đọng", "Gán ưu tiên cao cho lỗi ảnh hưởng đặt sân/check-in."))
+    plan.append(("CRM", "Nhắc khách đã đặt sân quay lại", "Gửi lời mời đặt lại cùng khung giờ tuần sau và tặng điểm loyalty."))
+    plan.append(("Ops", "Checklist vận hành sân", "Kiểm tra đèn, lưới, thảm, nước uống, quạt trước giờ cao điểm."))
+    for idx, (tag, title, desc) in enumerate(plan, 1):
+        st.markdown(f"<div class='automation-step'><b>{idx}. {title}</b> <span class='pill blue'>{tag}</span><br><span class='muted'>{desc}</span></div>", unsafe_allow_html=True)
+    if st.button("🚀 AI tạo task vận hành từ kế hoạch này", use_container_width=True):
+        created = 0
+        for tag, title, desc in plan:
+            execute("INSERT INTO ai_tasks VALUES (?,?,?,?,?,?,?)", (str(uuid.uuid4()), title, desc, tag, "Vừa", "open", now()))
+            created += 1
+        st.success(f"Đã tạo {created} task AI Automation.")
+
+    st.markdown("### 📣 AI tạo nội dung quảng cáo nhanh")
+    audience = st.selectbox("Đối tượng muốn quảng cáo", ["Người mới chơi", "Nhóm văn phòng", "Sinh viên", "CLB cầu lông", "Người mua bán vợt", "Chủ sân cầu lông"])
+    if audience == "Người mới chơi":
+        caption = "🏸 Mới chơi cầu lông ở Vinh? Tìm sân, tìm kèo, đặt lịch và mua dụng cụ dễ hơn trong một app."
+    elif audience == "Nhóm văn phòng":
+        caption = "Sau giờ làm, rủ team đi đánh cầu! Badminton Vinh giúp đặt sân nhanh, tìm khung giờ đẹp và check-in tích điểm."
+    elif audience == "Sinh viên":
+        caption = "Sinh viên ở Vinh muốn tìm sân cầu lông giá hợp lý? Có sân, có kèo, có chợ dụng cụ và voucher giờ thấp điểm."
+    elif audience == "CLB cầu lông":
+        caption = "Quản lý lịch CLB, hội viên, giải đấu, check-in và báo cáo chỉ trong một app cầu lông chuyên nghiệp."
+    elif audience == "Chủ sân cầu lông":
+        caption = "Chủ sân cần quản lý booking, khách hàng, khung giờ trống và doanh thu? AI Automation giúp vận hành chuyên nghiệp hơn."
+    else:
+        caption = "Cần mua/bán vợt, giày, cầu ở Vinh? Đăng tin nhanh, tìm người mua gần bạn và kết hợp combo đặt sân."
+    st.text_area("Caption AI gợi ý", caption, height=120)
+
+
+def table_exists(name: str) -> bool:
+    try:
+        return bool(q("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (name,)))
+    except Exception:
+        return False
+
+
+
+def _ai_kpi_snapshot() -> Dict[str, Any]:
+    try:
+        bookings = q("SELECT * FROM bookings") if table_exists("bookings") else []
+        courts = q("SELECT * FROM courts") if table_exists("courts") else []
+        products = q("SELECT * FROM products") if table_exists("products") else []
+        users = q("SELECT * FROM users") if table_exists("users") else []
+        feedback = q("SELECT * FROM feedback") if table_exists("feedback") else []
+        confirmed = [row_to_dict(b) for b in bookings if row_to_dict(b).get("status") == "confirmed"]
+        revenue = sum(int(row_to_dict(b).get("total") or 0) for b in confirmed)
+        open_feedback = [row_to_dict(f) for f in feedback if row_to_dict(f).get("status", "open") != "closed"]
+        return {
+            "courts": len(courts),
+            "bookings": len(bookings),
+            "confirmed": len(confirmed),
+            "revenue": revenue,
+            "products": len(products),
+            "users": len(users),
+            "open_feedback": len(open_feedback),
+        }
+    except Exception as e:
+        return {"error": str(e), "courts": 0, "bookings": 0, "confirmed": 0, "revenue": 0, "products": 0, "users": 0, "open_feedback": 0}
+
+
+def _ai_enterprise_score(k: Dict[str, Any]) -> int:
+    score = 30
+    score += min(20, int(k.get("courts", 0)) * 3)
+    score += min(18, int(k.get("confirmed", 0)) * 2)
+    score += min(12, int(k.get("products", 0)))
+    score += min(10, int(k.get("users", 0)))
+    score += 10 if int(k.get("open_feedback", 0)) == 0 else max(0, 10 - int(k.get("open_feedback", 0)) * 2)
+    return max(0, min(100, score))
+
+
+def _ai_recommendations(k: Dict[str, Any]) -> List[Dict[str, str]]:
+    recs = []
+    if int(k.get("confirmed", 0)) < 5:
+        recs.append({"agent":"Growth Agent", "priority":"Cao", "task":"Tạo chiến dịch đặt sân lần đầu: voucher NEWBIE20 + bài đăng Facebook + nhắc bạn bè đi theo nhóm."})
+    if int(k.get("products", 0)) < 8:
+        recs.append({"agent":"Marketplace Agent", "priority":"Vừa", "task":"Kích hoạt chợ dụng cụ: mời người chơi đăng vợt/giày/cầu cũ, ưu tiên sản phẩm có ảnh và số điện thoại."})
+    if int(k.get("open_feedback", 0)) > 0:
+        recs.append({"agent":"Support Agent", "priority":"Cao", "task":"Xử lý feedback đang mở trong 24h, phản hồi khách và đánh dấu đã xử lý."})
+    if int(k.get("courts", 0)) < 5:
+        recs.append({"agent":"Data Agent", "priority":"Cao", "task":"Bổ sung dữ liệu sân thật ở TP Vinh: địa chỉ, số điện thoại, giá, khung giờ, hình ảnh."})
+    recs.append({"agent":"Ops Agent", "priority":"Vừa", "task":"Tạo lịch vận hành hằng ngày: kiểm tra sân trống, tạo voucher giờ thấp điểm, nhắc check-in sau khi chơi."})
+    recs.append({"agent":"Finance Agent", "priority":"Vừa", "task":"Theo dõi doanh thu theo sân/khung giờ, đề xuất combo thuê vợt + cầu + sân cho nhóm 4 người."})
+    return recs
+
+
+def page_ai_enterprise_automation_os() -> None:
+    st.title("🧬 AI Enterprise Automation OS")
+    st.caption("Bộ não tự động hóa toàn diện cho app cầu lông: phân tích dữ liệu, tạo task, tạo chiến dịch, tối ưu vận hành và đồng bộ dữ liệu. Mặc định offline-first, không tốn API.")
+    k = _ai_kpi_snapshot()
+    if k.get("error"):
+        safe_error("AI không đọc được một phần dữ liệu. App vẫn chạy, hãy xem chi tiết để sửa.", k["error"])
+    score = _ai_enterprise_score(k)
+    cols = st.columns(5)
+    with cols[0]: metric_card("Automation Score", f"{score}/100", "độ sẵn sàng")
+    with cols[1]: metric_card("Sân", k.get("courts", 0), "đang có")
+    with cols[2]: metric_card("Booking", k.get("confirmed", 0), "đã xác nhận")
+    with cols[3]: metric_card("Doanh thu", vnd(k.get("revenue", 0)), "demo")
+    with cols[4]: metric_card("Feedback mở", k.get("open_feedback", 0), "cần xử lý")
+
+    tabs = st.tabs(["🧠 AI Brain", "⚙️ Auto Task", "📣 Marketing", "🏟️ Court Ops", "🤝 CRM", "💾 Sync Guard", "🧪 Test Plan"])
+    with tabs[0]:
+        st.markdown("### AI Agents đang hoạt động")
+        agents = [
+            ("Growth Agent", "Tăng booking, lấp giờ trống, tạo ưu đãi."),
+            ("Court Ops Agent", "Theo dõi sân, lịch, bảo trì, check-in."),
+            ("CRM Agent", "Phân nhóm khách, giữ chân khách cũ, mời đặt lại."),
+            ("Marketplace Agent", "Kích hoạt chợ mua bán dụng cụ."),
+            ("Finance Agent", "Dự báo doanh thu, combo, gói hội viên."),
+            ("Sync Guard", "Nhắc backup, đồng bộ cloud, khôi phục dữ liệu."),
+        ]
+        grid = st.columns(3)
+        for i, (name, body) in enumerate(agents):
+            with grid[i % 3]: card("🤖", name, body, "offline AI")
+        st.markdown("### Khuyến nghị ưu tiên")
+        for r in _ai_recommendations(k):
+            color = "red" if r["priority"] == "Cao" else "yellow"
+            st.markdown(f"<div class='automation-step'><span class='pill {color}'>{r['priority']}</span> <b>{r['agent']}</b><br>{r['task']}</div>", unsafe_allow_html=True)
+
+    with tabs[1]:
+        st.markdown("### Tự tạo task vận hành hôm nay")
+        if st.button("🚀 AI tạo task tự động", use_container_width=True):
+            tasks = _ai_recommendations(k)
+            st.session_state["enterprise_tasks"] = tasks
+            st.success(f"Đã tạo {len(tasks)} task vận hành.")
+        for i, t in enumerate(st.session_state.get("enterprise_tasks", _ai_recommendations(k)), 1):
+            st.markdown(f"<div class='timeline-item'><b>Task {i} · {t['agent']}</b><br><span class='pill blue'>{t['priority']}</span> {t['task']}</div>", unsafe_allow_html=True)
+        st.download_button("⬇️ Tải task JSON", json.dumps(st.session_state.get("enterprise_tasks", _ai_recommendations(k)), ensure_ascii=False, indent=2).encode('utf-8'), "ai_enterprise_tasks.json", "application/json", use_container_width=True)
+
+    with tabs[2]:
+        st.markdown("### AI tạo chiến dịch Facebook / Zalo / CLB")
+        audience = st.selectbox("Đối tượng", ["Người mới chơi", "Nhóm văn phòng", "Sinh viên", "CLB cầu lông", "Chủ sân", "Người mua bán vợt"])
+        tone = st.selectbox("Giọng văn", ["Gần gũi", "Chuyên nghiệp", "Hào hứng", "Cảm xúc", "Ngắn gọn"])
+        caption = f"🏸 Cầu lông Vinh dễ hơn với {APP_NAME}! Đặt sân nhanh, tìm kèo, mua bán dụng cụ, check-in tích điểm và nhận gợi ý AI tự động. Dành cho {audience.lower()} muốn chơi đều hơn, tiết kiệm hơn và kết nối cộng đồng tốt hơn."
+        if tone == "Cảm xúc": caption = "Có những ngày chỉ cần một trận cầu lông thật vui là đủ để nhẹ đầu hơn. Badminton Vinh giúp bạn tìm sân, tìm kèo, đặt lịch và kết nối người chơi ở Vinh dễ hơn mỗi ngày. 🏸"
+        st.text_area("Caption AI gợi ý", caption, height=150)
+        st.markdown("**Kịch bản 7 ngày:**")
+        for d in range(1,8):
+            st.markdown(f"<div class='timeline-item'><b>Ngày {d}</b>: {'Đăng ưu đãi đặt sân' if d in [1,4] else 'Chia sẻ mẹo cầu lông' if d in [2,5] else 'Kêu gọi tìm kèo/CLB' if d in [3,6] else 'Tổng hợp feedback + voucher cuối tuần'}</div>", unsafe_allow_html=True)
+
+    with tabs[3]:
+        st.markdown("### Court Ops tự động hóa")
+        st.markdown("<div class='deal-card'><b>Giờ thấp điểm:</b> tạo voucher tự động nếu khung 09:00–16:00 trống nhiều.</div>", unsafe_allow_html=True)
+        st.markdown("<div class='deal-card'><b>Giờ hot:</b> giữ giá ổn định, ưu tiên khách hội viên và nhóm đặt định kỳ.</div>", unsafe_allow_html=True)
+        st.markdown("<div class='deal-card'><b>Bảo trì:</b> nhắc kiểm tra đèn, lưới, thảm, quạt sau mỗi ngày cao điểm.</div>", unsafe_allow_html=True)
+        st.markdown("<div class='deal-card'><b>Check-in:</b> sau buổi chơi, gợi ý khách đánh giá sân và đặt lại tuần sau.</div>", unsafe_allow_html=True)
+
+    with tabs[4]:
+        st.markdown("### CRM tự động")
+        segments = [
+            ("Khách mới", "Gửi voucher lần 2 trong 48h."),
+            ("Khách tiềm năng", "Mời vào nhóm kèo phù hợp trình độ."),
+            ("Khách VIP", "Giữ khung giờ đẹp và gợi ý gói tháng."),
+            ("Khách ngủ quên", "Gửi lời nhắc quay lại sau 14 ngày không đặt sân."),
+        ]
+        for name, action in segments:
+            st.markdown(f"<div class='crm-row'><b>{name}</b><br><span class='muted'>{action}</span></div>", unsafe_allow_html=True)
+
+    with tabs[5]:
+        st.markdown("### Sync Guard")
+        st.info("Khuyến nghị: cuối mỗi ngày bấm backup JSON; mỗi tuần đẩy snapshot lên Supabase nếu đã cấu hình Secrets.")
+        checks = [
+            ("SQLite local", DB_PATH.exists()),
+            ("SUPABASE_URL", bool(st.secrets.get("SUPABASE_URL", "") if hasattr(st, 'secrets') else False)),
+            ("SUPABASE_SERVICE_ROLE_KEY", bool(st.secrets.get("SUPABASE_SERVICE_ROLE_KEY", "") if hasattr(st, 'secrets') else False)),
+        ]
+        for label, ok in checks:
+            st.markdown(f"<div class='status-{'ok' if ok else 'warn'}'><b>{'✅' if ok else '⚠️'} {label}</b></div>", unsafe_allow_html=True)
+
+    with tabs[6]:
+        st.markdown("### Checklist test trước khi public")
+        items = ["Mở Trang chính", "Đặt sân không lỗi selectbox", "Check-in không lỗi", "Hội viên không lỗi", "QR Check-in không lỗi", "Backup JSON tải được", "AI tạo task được", "Mobile nhìn rõ nút", "Reboot Streamlit vẫn mở được"]
+        for item in items:
+            st.checkbox(item, key=f"ent_test_{item}")
+
 
 def main() -> None:
     st.set_page_config(page_title=APP_NAME, page_icon="🏸", layout="wide", initial_sidebar_state="expanded")
@@ -1579,7 +2072,9 @@ def main() -> None:
             "🔳 QR Check-in",
             "🧑‍💼 CRM khách hàng",
             "📤 Xuất báo cáo",
+            "🧬 AI Enterprise Automation OS",
             "🧠 AI Ultra Command Center",
+            "🚀 AI Super Automation Suite",
             "⏱️ AI Auto Scheduler",
             "📚 AI Playbook Lab",
             "📦 AI Inventory & Finance",
@@ -1595,6 +2090,7 @@ def main() -> None:
             "🤖 Trợ lý offline",
             "🛡️ An toàn & điều khoản",
             "🔔 Thông báo",
+            "☁️ Lưu trữ & đồng bộ",
             "👑 Admin mini",
             "🩺 Health Check",
             "⚙️ Cài đặt",
@@ -1620,7 +2116,9 @@ def main() -> None:
     elif page == "🔳 QR Check-in": page_qr_checkin()
     elif page == "🧑‍💼 CRM khách hàng": page_crm_customers()
     elif page == "📤 Xuất báo cáo": page_export_reports()
+    elif page == "🧬 AI Enterprise Automation OS": page_ai_enterprise_automation_os()
     elif page == "🧠 AI Ultra Command Center": page_ai_ultra_command_center()
+    elif page == "🚀 AI Super Automation Suite": page_ai_super_automation_suite()
     elif page == "⏱️ AI Auto Scheduler": page_ai_auto_scheduler()
     elif page == "📚 AI Playbook Lab": page_ai_playbook_lab()
     elif page == "📦 AI Inventory & Finance": page_ai_inventory_finance()
@@ -1636,10 +2134,11 @@ def main() -> None:
     elif page == "🤖 Trợ lý offline": page_ai_assistant_rules()
     elif page == "🛡️ An toàn & điều khoản": page_public_safety()
     elif page == "🔔 Thông báo": page_notifications()
+    elif page == "☁️ Lưu trữ & đồng bộ": page_persistent_sync()
     elif page == "👑 Admin mini": page_admin()
     elif page == "🩺 Health Check": page_health()
     elif page == "⚙️ Cài đặt": page_settings()
-    st.caption("Badminton Vinh AI Automation Ultra · AI Automation · Owner Portal · CRM · Loyalty · QR · Analytics · Đặt sân · Marketplace · HLV · Giải đấu · Hội viên · Analytics · Mobile-first.")
+    st.caption("Badminton Vinh AI Enterprise Sync · AI Automation · Owner Portal · CRM · Loyalty · QR · Analytics · Đặt sân · Marketplace · HLV · Giải đấu · Hội viên · Analytics · Mobile-first.")
 
 
 if __name__ == "__main__":
