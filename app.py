@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Badminton Vinh Production Ready v1.2.1 Home Chat
+"""Badminton Vinh Production Ready v1.2.2 Live Comments
 Chạy: streamlit run app.py
-Một file độc lập: đăng nhập thật, phân quyền, đặt sân, chủ sân, admin, backup/cloud sync, AI vận hành offline.
+Một file độc lập: đăng nhập thật, phân quyền, đặt sân, chủ sân, admin, backup/cloud sync, AI vận hành offline, bình luận live ngay trang chủ.
 """
 from __future__ import annotations
 
@@ -18,9 +18,9 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 import streamlit as st
 
-APP_NAME = "Badminton Vinh Production Ready v1.2.1 Home Chat"
-APP_VERSION = "1.2.1 Home Chat"
-DB_PATH = Path("badminton_vinh_v1_2_1_home_chat.sqlite3")
+APP_NAME = "Badminton Vinh Production Ready v1.2.2 Live Comments"
+APP_VERSION = "1.2.2 Live Comments"
+DB_PATH = Path("badminton_vinh_v1_2_2_live_comments.sqlite3")
 
 # ========================= UI =========================
 
@@ -37,7 +37,7 @@ def css() -> None:
     .pill{display:inline-flex;align-items:center;gap:6px;padding:7px 11px;border-radius:999px;font-weight:800;font-size:.78rem;margin:3px 4px 3px 0;border:1px solid var(--line)}.green{background:rgba(34,197,94,.12);color:#86efac;border-color:rgba(34,197,94,.28)}.blue{background:rgba(56,189,248,.12);color:#7dd3fc;border-color:rgba(56,189,248,.28)}.yellow{background:rgba(245,158,11,.12);color:#fcd34d;border-color:rgba(245,158,11,.28)}.red{background:rgba(239,68,68,.12);color:#fca5a5;border-color:rgba(239,68,68,.28)}.purple{background:rgba(139,92,246,.12);color:#c4b5fd;border-color:rgba(139,92,246,.28)}
     .row-card{background:linear-gradient(180deg,#0e1b2b,#0b1422);border:1px solid #1e3350;border-radius:22px;padding:14px;margin:10px 0}.price{font-size:1.15rem;font-weight:950;color:#86efac}.safe{border-left:4px solid var(--green);background:rgba(34,197,94,.08);padding:10px 12px;border-radius:12px}.warn{border-left:4px solid var(--yellow);background:rgba(245,158,11,.08);padding:10px 12px;border-radius:12px}.bad{border-left:4px solid var(--red);background:rgba(239,68,68,.08);padding:10px 12px;border-radius:12px}
     .stButton>button{border-radius:16px!important;min-height:42px;font-weight:850!important;border:1px solid #24405f!important;background:#10233a!important;color:#eef7ff!important}.stButton>button:hover{border-color:#22c55e!important;color:#86efac!important}
-    .chat-box{background:linear-gradient(180deg,#0b1422,#08101d);border:1px solid #1f334d;border-radius:24px;padding:14px;margin-top:14px;max-height:520px;overflow-y:auto}.chat-msg{border:1px solid #223955;border-radius:18px;padding:10px 12px;margin:9px 0;background:#0f1d31}.chat-own{background:linear-gradient(180deg,#12331f,#0d2417);border-color:rgba(34,197,94,.35)}.chat-admin{background:linear-gradient(180deg,#2a1744,#171027);border-color:rgba(139,92,246,.42)}.chat-meta{font-size:.78rem;color:#9fb3c8;margin-bottom:4px}.chat-text{font-size:.97rem;color:#eef7ff;line-height:1.45}.chat-room{display:inline-flex;padding:5px 9px;border-radius:999px;background:rgba(56,189,248,.11);border:1px solid rgba(56,189,248,.22);font-size:.72rem;color:#7dd3fc;margin-left:6px}.mobile-note{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);z-index:999;background:rgba(8,15,28,.9);border:1px solid #24405f;border-radius:999px;padding:8px 14px;color:#dbeafe;font-size:.8rem;backdrop-filter:blur(8px)}
+    .live-wrap{background:linear-gradient(180deg,#0b1422,#08101d);border:1px solid #1f334d;border-radius:24px;padding:14px;margin-top:14px}.live-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:8px}.live-dot{display:inline-flex;width:9px;height:9px;border-radius:999px;background:#ef4444;box-shadow:0 0 0 6px rgba(239,68,68,.12);margin-right:7px}.live-feed{max-height:430px;overflow-y:auto;padding-right:2px}.live-comment{border:1px solid #223955;border-radius:18px;padding:10px 12px;margin:8px 0;background:#0f1d31}.live-own{background:linear-gradient(180deg,#12331f,#0d2417);border-color:rgba(34,197,94,.35)}.live-admin{background:linear-gradient(180deg,#2a1744,#171027);border-color:rgba(139,92,246,.42)}.live-meta{font-size:.76rem;color:#9fb3c8;margin-bottom:4px}.live-text{font-size:.96rem;color:#eef7ff;line-height:1.45}.live-tools{display:flex;gap:8px;flex-wrap:wrap}.live-quick{font-size:.84rem;color:#9fb3c8;margin-top:8px}.mobile-note{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);z-index:999;background:rgba(8,15,28,.9);border:1px solid #24405f;border-radius:999px;padding:8px 14px;color:#dbeafe;font-size:.8rem;backdrop-filter:blur(8px)}
     @media(max-width:850px){.main .block-container{padding-left:.7rem;padding-right:.7rem}.hero{padding:16px;border-radius:22px}.hero-title{font-size:1.45rem}.grid4,.grid3,.grid2{grid-template-columns:1fr}.card{padding:13px;border-radius:20px}.big{font-size:1.35rem}.pill{font-size:.72rem;padding:6px 9px}}
     </style>
     """, unsafe_allow_html=True)
@@ -304,26 +304,29 @@ def ai_answer(prompt: str) -> str:
     return "Gợi ý: giữ luồng đặt sân thật đơn giản, dữ liệu sân thật đầy đủ, ưu tiên mobile, dùng AI offline để tạo task hàng ngày."
 
 
-# ========================= HOME CHAT BOARD =========================
+# ========================= HOME LIVE COMMENTS =========================
 
-CHAT_ROOMS = ["Toàn cộng đồng", "Tìm kèo", "Đặt sân", "Mua bán", "Góp ý app"]
+LIVE_ROOM = "Trang chủ Live"
+
 
 def _escape_html(text: Any) -> str:
     import html
     return html.escape(str(text or "")).replace("\n", "<br>")
 
-def chat_supabase_available() -> bool:
+
+def live_comments_supabase_available() -> bool:
     return supabase_configured()
 
-def chat_insert(room: str, message: str, u: sqlite3.Row) -> Tuple[bool, str]:
+
+def live_comment_insert(message: str, u: sqlite3.Row) -> Tuple[bool, str]:
     text = (message or "").strip()
     if not text:
-        return False, "Bạn chưa nhập nội dung chat."
-    if len(text) > 600:
-        return False, "Tin nhắn tối đa 600 ký tự để bảng chat gọn và dễ đọc."
+        return False, "Bạn chưa nhập bình luận."
+    if len(text) > 360:
+        return False, "Bình luận nên dưới 360 ký tự để live gọn và dễ đọc."
     payload = {
         "id": str(uuid.uuid4()),
-        "room": room,
+        "room": LIVE_ROOM,
         "user_id": u["id"],
         "user_name": u["name"],
         "role": u["role"],
@@ -331,38 +334,36 @@ def chat_insert(room: str, message: str, u: sqlite3.Row) -> Tuple[bool, str]:
         "is_deleted": 0,
         "created_at": datetime.now().isoformat(timespec="seconds"),
     }
-    # Ghi local trước để app luôn dùng được, kể cả chưa có cloud.
     execute("INSERT INTO chat_messages VALUES (?,?,?,?,?,?,?,?)", (payload["id"], payload["room"], payload["user_id"], payload["user_name"], payload["role"], payload["message"], payload["is_deleted"], payload["created_at"]))
-    # Nếu Supabase đã cấu hình và đã tạo bảng badminton_chat_messages, đồng bộ thêm lên cloud.
-    if chat_supabase_available():
+    if live_comments_supabase_available():
         try:
             import requests
             url = secrets_get("SUPABASE_URL").rstrip("/") + "/rest/v1/badminton_chat_messages"
             r = requests.post(url, headers=supabase_headers(), json=payload, timeout=15)
             if r.status_code >= 300:
-                return True, "Đã gửi chat local. Cloud chat chưa đồng bộ được, kiểm tra bảng badminton_chat_messages trong Supabase."
+                return True, "Đã đăng bình luận local. Cloud live chưa đồng bộ được, kiểm tra bảng badminton_chat_messages trong Supabase."
         except Exception:
-            return True, "Đã gửi chat local. Cloud chat tạm thời chưa đồng bộ."
-    return True, "Đã gửi tin nhắn."
+            return True, "Đã đăng bình luận local. Cloud live tạm thời chưa đồng bộ."
+    return True, "Đã đăng bình luận."
 
-def chat_fetch(room: str, limit: int = 40) -> List[Dict[str, Any]]:
-    # Ưu tiên lấy cloud nếu Supabase chat đã cấu hình; nếu lỗi thì fallback local.
-    if chat_supabase_available():
+
+def live_comment_fetch(limit: int = 30) -> List[Dict[str, Any]]:
+    if live_comments_supabase_available():
         try:
             import requests
-            url = secrets_get("SUPABASE_URL").rstrip("/") + f"/rest/v1/badminton_chat_messages?room=eq.{room}&is_deleted=eq.0&order=created_at.desc&limit={int(limit)}"
+            url = secrets_get("SUPABASE_URL").rstrip("/") + f"/rest/v1/badminton_chat_messages?room=eq.{LIVE_ROOM}&is_deleted=eq.0&order=created_at.desc&limit={int(limit)}"
             r = requests.get(url, headers=supabase_headers(), timeout=15)
             if r.status_code < 300:
-                arr = r.json()
-                return list(reversed(arr))
+                return r.json()
         except Exception:
             pass
-    rows = q("SELECT * FROM chat_messages WHERE room=? AND is_deleted=0 ORDER BY created_at DESC LIMIT ?", (room, int(limit)))
-    return list(reversed([dict(r) for r in rows]))
+    rows = q("SELECT * FROM chat_messages WHERE room=? AND is_deleted=0 ORDER BY created_at DESC LIMIT ?", (LIVE_ROOM, int(limit)))
+    return [dict(r) for r in rows]
 
-def chat_delete(message_id: str) -> None:
+
+def live_comment_delete(message_id: str) -> None:
     execute("UPDATE chat_messages SET is_deleted=1 WHERE id=?", (message_id,))
-    if chat_supabase_available():
+    if live_comments_supabase_available():
         try:
             import requests
             url = secrets_get("SUPABASE_URL").rstrip("/") + f"/rest/v1/badminton_chat_messages?id=eq.{message_id}"
@@ -370,52 +371,71 @@ def chat_delete(message_id: str) -> None:
         except Exception:
             pass
 
-def render_home_chat() -> None:
+
+def render_home_live_comments() -> None:
     u = current_user()
-    st.markdown("### 💬 Bảng chat cộng đồng")
-    st.caption("Chat nhanh ngay trang chủ: hỏi sân, tìm kèo, mua bán dụng cụ, góp ý app. Nếu cấu hình Supabase, chat sẽ đồng bộ cloud; nếu chưa, app vẫn lưu local.")
-    c1, c2, c3 = st.columns([1.2, 0.8, 0.6])
-    with c1:
-        room = st.selectbox("Phòng chat", CHAT_ROOMS, key="home_chat_room")
-    with c2:
-        limit = st.selectbox("Số tin hiển thị", [20, 40, 80], index=1, key="chat_limit")
-    with c3:
-        if st.button("🔄 Làm mới", use_container_width=True):
-            st.rerun()
-    with st.form("home_chat_form", clear_on_submit=True):
-        msg = st.text_area("Nhập tin nhắn", placeholder="Ví dụ: Tối nay ai đánh ở Trung Đô không?", height=82, max_chars=600)
-        col_a, col_b = st.columns([0.65, 0.35])
+    st.markdown("### 🔴 Live bình luận trang chủ")
+    st.caption("Bình luận trực tiếp kiểu phiên live: hỏi nhanh về sân, tìm kèo, báo còn sân trống, góp ý app. Không còn dạng bảng/phòng chat rườm rà.")
+    st.markdown("""
+    <div class='live-wrap'>
+      <div class='live-head'>
+        <div><span class='live-dot'></span><b>Đang live cộng đồng Badminton Vinh</b><div class='muted'>Bình luận mới nhất hiện ở trên cùng</div></div>
+        <div class='pill green'>Live</div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+    quick_options = ["Tối nay ai đánh không?", "Sân nào còn khung 19h?", "Mình tìm kèo trung bình", "Có ai bán vợt không?", "Góp ý app"]
+    with st.form("home_live_comment_form", clear_on_submit=True):
+        msg = st.text_area("Bình luận trực tiếp", placeholder="Viết bình luận như Facebook Live...", height=72, max_chars=360)
+        col_a, col_b = st.columns([0.62, 0.38])
         with col_a:
-            st.caption("Quy tắc: lịch sự, không spam, không đăng số tài khoản/API key/mật khẩu, mua bán tự chịu trách nhiệm kiểm tra.")
+            st.caption("Lưu ý: lịch sự, không spam, không đăng mật khẩu/API key/thông tin nhạy cảm.")
         with col_b:
-            submitted = st.form_submit_button("📨 Gửi chat", type="primary", use_container_width=True)
+            submitted = st.form_submit_button("💬 Đăng bình luận", type="primary", use_container_width=True)
         if submitted:
-            ok, text = chat_insert(room, msg, u)
+            ok, text = live_comment_insert(msg, u)
             st.success(text) if ok else st.error(text)
             if ok:
                 st.rerun()
-    messages = chat_fetch(room, limit)
+    st.markdown("<div class='live-quick'>Gợi ý bình luận nhanh:</div>", unsafe_allow_html=True)
+    cols = st.columns(5)
+    for i, quick in enumerate(quick_options):
+        with cols[i % len(cols)]:
+            if st.button(quick, key=f"quick_live_{i}", use_container_width=True):
+                ok, text = live_comment_insert(quick, u)
+                st.success(text) if ok else st.error(text)
+                if ok:
+                    st.rerun()
+    col_r, col_l = st.columns([0.35, 0.65])
+    with col_r:
+        if st.button("🔄 Làm mới live", use_container_width=True):
+            st.rerun()
+    with col_l:
+        limit = st.select_slider("Số bình luận hiển thị", [15, 30, 50], value=30)
+    messages = live_comment_fetch(limit)
     if not messages:
-        st.info("Phòng này chưa có tin nhắn. Bạn có thể là người mở lời đầu tiên.")
-    else:
-        html_parts = ["<div class='chat-box'>"]
-        for m in messages:
-            own = str(m.get("user_id")) == str(u["id"])
-            role = str(m.get("role") or "player")
-            klass = "chat-msg chat-own" if own else ("chat-msg chat-admin" if role == "admin" else "chat-msg")
-            role_label = {"admin":"Admin", "owner":"Chủ sân", "player":"Người chơi"}.get(role, role)
-            html_parts.append(
-                f"<div class='{klass}'><div class='chat-meta'><b>{_escape_html(m.get('user_name'))}</b> · {role_label} <span class='chat-room'>{_escape_html(m.get('room'))}</span> · {_escape_html(m.get('created_at'))}</div><div class='chat-text'>{_escape_html(m.get('message'))}</div></div>"
-            )
-        html_parts.append("</div>")
-        st.markdown("".join(html_parts), unsafe_allow_html=True)
-        if u["role"] == "admin":
-            with st.expander("👑 Admin quản lý chat"):
-                opts = [(m.get("id"), f"{m.get('created_at')} · {m.get('user_name')}: {str(m.get('message'))[:70]}") for m in messages]
-                if opts:
-                    chosen = st.selectbox("Chọn tin cần ẩn", list(range(len(opts))), format_func=lambda i: opts[i][1])
-                    if st.button("Ẩn tin nhắn này"):
-                        chat_delete(opts[int(chosen)][0]); st.success("Đã ẩn tin nhắn."); st.rerun()
+        st.info("Chưa có bình luận live. Bạn có thể là người bình luận đầu tiên.")
+        return
+    html_parts = ["<div class='live-feed'>"]
+    for m in messages:
+        own = str(m.get("user_id")) == str(u["id"])
+        role = str(m.get("role") or "player")
+        klass = "live-comment live-own" if own else ("live-comment live-admin" if role == "admin" else "live-comment")
+        role_label = {"admin":"Admin", "owner":"Chủ sân", "player":"Người chơi"}.get(role, role)
+        html_parts.append(
+            f"<div class='{klass}'><div class='live-meta'><b>{_escape_html(m.get('user_name'))}</b> · {role_label} · {_escape_html(m.get('created_at'))}</div><div class='live-text'>{_escape_html(m.get('message'))}</div></div>"
+        )
+    html_parts.append("</div>")
+    st.markdown("".join(html_parts), unsafe_allow_html=True)
+    if u["role"] == "admin":
+        with st.expander("👑 Admin quản lý bình luận live"):
+            opts = [(m.get("id"), f"{m.get('created_at')} · {m.get('user_name')}: {str(m.get('message'))[:70]}") for m in messages]
+            if opts:
+                chosen = st.selectbox("Chọn bình luận cần ẩn", list(range(len(opts))), format_func=lambda i: opts[i][1])
+                if st.button("Ẩn bình luận này"):
+                    live_comment_delete(opts[int(chosen)][0])
+                    st.success("Đã ẩn bình luận.")
+                    st.rerun()
 
 # ========================= PAGES =========================
 
@@ -431,7 +451,7 @@ def page_home() -> None:
     st.markdown("### 🤖 Gợi ý AI hôm nay")
     for r in ai_recommendations()[:3]:
         status(f"<b>{r['title']}</b> · {r['body']} <span class='pill yellow'>{r['priority']}</span>", "warn" if r["priority"]=="Cao" else "safe")
-    render_home_chat()
+    render_home_live_comments()
 
 def page_booking() -> None:
     hero("📅 Đặt sân Pro", "Luồng mobile ngắn: chọn sân → ngày/giờ → SĐT → xác nhận. Có cọc, mã giao dịch, trạng thái rõ.")

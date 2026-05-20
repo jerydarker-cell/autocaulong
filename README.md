@@ -49,9 +49,9 @@ Streamlit Cloud chọn `app.py` làm main file path.
 Không commit `SUPABASE_SERVICE_ROLE_KEY` lên GitHub.
 
 
-## v1.2.1 Home Chat Board
+## v1.2.2 Live Comments Board
 
-Bản này thêm bảng chat online ngay tại trang chủ:
+Bản này thêm bình luận live online ngay tại trang chủ:
 
 - Phòng chat: Toàn cộng đồng, Tìm kèo, Đặt sân, Mua bán, Góp ý app.
 - Người chơi / chủ sân / admin đều chat được sau khi đăng nhập.
@@ -61,3 +61,9 @@ Bản này thêm bảng chat online ngay tại trang chủ:
 
 ### SQL cần chạy thêm trong Supabase
 Mở `SUPABASE_V1_2_SQL.sql` và chạy lại trong Supabase SQL Editor. File đã có thêm bảng `badminton_chat_messages`.
+
+
+## v1.2.2 Live Comments
+- Sửa UX: bỏ bảng chat/phòng chat.
+- Thêm bình luận trực tiếp tại trang chủ kiểu phiên live.
+- Bình luận mới nhất hiện trên cùng, có quick comments và admin ẩn bình luận.
