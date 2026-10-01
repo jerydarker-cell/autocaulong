@@ -1,0 +1,18 @@
+{
+  "name": "Đặt Sân Cầu Lông",
+  "short_name": "Đặt sân",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#06101c",
+  "theme_color": "#07111f",
+  "description": "Đặt sân cầu lông nhanh, xem lịch trống trực tiếp.",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

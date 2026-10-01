@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Đặt Sân Cầu Lông</title>
+  <meta name="description" content="Đặt sân cầu lông nhanh, xem lịch trống trực tiếp và quản lý booking trên Firebase.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Đặt sân">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <meta name="theme-color" content="#07111f">
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand">
+          <div class="brand-logo">🏸</div>
+          <div class="brand-text"><h1 id="brandName">Đặt Sân Cầu Lông</h1><p id="brandSub">Nhanh • rõ lịch • không trùng sân</p></div>
+        </div>
+        <button class="icon-btn" onclick="openAdmin()">⚙️ Quản trị</button>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div class="hero-card">
+        <span class="eyebrow">⚡ Đặt sân trong chưa đầy 1 phút</span>
+        <h2>Chọn sân. Chọn giờ.<br>Giữ lịch ngay.</h2>
+        <p id="heroAddress">Lịch sân cập nhật trực tiếp, tự động chặn giờ đã có khách và tối ưu cho điện thoại.</p>
+      </div>
+      <div class="hero-side hero-card">
+        <div class="mini-stat"><b id="courtCount">–</b><span>Sân đang mở</span></div>
+        <div class="mini-stat"><b id="todayLabel">–</b><span>Ngày đang chọn</span></div>
+        <div class="mini-stat"><b id="hotlineLabel">Chưa cài</b><span>Hotline</span></div>
+      </div>
+    </section>
+
+    <nav class="tabs">
+      <button class="tab active" data-view="booking" onclick="switchView('booking',this)">🏸 Đặt sân</button>
+      <button class="tab" data-view="lookup" onclick="switchView('lookup',this)">🔎 Tra cứu lịch</button>
+      <button class="tab hidden" id="adminTab" data-view="admin" onclick="switchView('admin',this)">🛡️ Quản trị</button>
+    </nav>
+
+    <main>
+      <section id="view-booking" class="view active">
+        <div class="section-head"><div><h3>Chọn ngày</h3><p>Đặt trước tối đa <span id="advanceDays">60</span> ngày</p></div><div style="display:flex;gap:7px;align-items:center"><input id="quickDate" class="input" type="date" style="min-height:36px;padding:6px 9px;width:148px" onchange="pickCustomDate(this.value)"><button class="btn btn-sm btn-ghost" onclick="goToday()">Hôm nay</button></div></div>
+        <div id="dateStrip" class="date-strip"></div>
+        <div class="section-head" style="margin-top:18px"><div><h3>Chọn sân & khung giờ</h3><p>Khung mờ là đã có người đặt hoặc đã qua giờ</p></div></div>
+        <div id="availability"><div class="loading"><div class="spinner"></div>Đang tải lịch sân…</div></div>
+      </section>
+
+      <section id="view-lookup" class="view">
+        <div class="lookup-wrap">
+          <div class="panel">
+            <div class="section-head"><div><h3>Tra cứu lịch đặt</h3><p>Dùng mã đặt sân + số điện thoại đã đăng ký.</p></div></div>
+            <div class="form-grid">
+              <div class="field full"><label>Mã đặt sân</label><input id="lookupCode" class="input" placeholder="Ví dụ: CL-261001-1234" autocapitalize="characters"></div>
+              <div class="field full"><label>Số điện thoại</label><input id="lookupPhone" class="input" inputmode="tel" placeholder="09xxxxxxxx"></div>
+              <div class="field full"><button class="btn btn-primary" onclick="lookupBookingUI()">Tra cứu ngay</button></div>
+            </div>
+          </div>
+          <div class="panel"><div id="lookupResult" class="empty">Kết quả lịch đặt sẽ hiển thị ở đây.</div></div>
+        </div>
+      </section>
+
+      <section id="view-admin" class="view">
+        <div id="adminLogin" class="panel admin-login">
+          <div class="section-head"><div><h3>Đăng nhập quản trị</h3><p>Dùng tài khoản Firebase Authentication đã được cấp quyền Admin.</p></div></div>
+          <div class="field"><label>Email quản trị</label><input id="adminEmail" class="input" type="email" autocomplete="username" placeholder="admin@san.com"></div>
+          <div class="field" style="margin-top:10px"><label>Mật khẩu</label><input id="adminPassword" class="input" type="password" autocomplete="current-password" placeholder="••••••••"></div>
+          <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="adminLoginUI(this)">Đăng nhập</button>
+        </div>
+
+        <div id="adminPanel" class="admin-layout hidden">
+          <div class="stats">
+            <div class="stat-card"><span>Lịch hôm nay</span><b id="stToday">0</b></div>
+            <div class="stat-card"><span>Chờ xác nhận</span><b id="stPending">0</b></div>
+            <div class="stat-card"><span>Đã xác nhận</span><b id="stConfirmed">0</b></div>
+            <div class="stat-card"><span>Doanh thu đã thu</span><b id="stRevenue">0đ</b></div>
+          </div>
+
+          <div class="panel">
+            <div class="section-head"><div><h3>Quản lý lịch đặt</h3><p>Tìm nhanh theo mã, tên khách, số điện thoại hoặc sân.</p></div><button class="btn btn-sm btn-ghost" onclick="adminLogoutUI()">Đăng xuất</button></div>
+            <div class="admin-toolbar">
+              <input id="adminDate" class="input" type="date" onchange="loadAdmin()">
+              <select id="adminStatus" class="select" onchange="loadAdmin()"><option value="">Tất cả trạng thái</option><option>Pending</option><option>Confirmed</option><option>Completed</option><option>Cancelled</option></select>
+              <input id="adminSearch" class="input" placeholder="Tìm mã / tên / SĐT / sân" oninput="debouncedAdminSearch()">
+              <button class="btn" onclick="loadAdmin()">Làm mới</button>
+            </div>
+            <div id="adminBookings" class="booking-list"></div>
+          </div>
+
+          <div class="admin-grid">
+            <div class="panel">
+              <div class="section-head"><div><h3>Cấu hình sân</h3><p>Bật/tắt sân, đổi giờ, giá, loại sân.</p></div><button class="btn btn-sm" onclick="openCourtEditor()">+ Thêm sân</button></div>
+              <div id="adminCourts"></div>
+            </div>
+            <div class="panel">
+              <div class="section-head"><div><h3>Thông tin hệ thống</h3><p>Hiển thị với khách trên trang đặt sân.</p></div></div>
+              <div class="settings-grid">
+                <div class="field"><label>Tên sân / thương hiệu</label><input id="setBusiness" class="input"></div>
+                <div class="field"><label>Hotline</label><input id="setHotline" class="input" inputmode="tel"></div>
+                <div class="field full"><label>Địa chỉ</label><input id="setAddress" class="input"></div>
+                <div class="field full"><label>Lưu ý đặt sân</label><textarea id="setNote" class="textarea"></textarea></div>
+              </div>
+              <button class="btn btn-primary" style="margin-top:12px" onclick="saveSettingsUI()">Lưu thông tin</button>
+              <hr style="border:0;border-top:1px solid rgba(255,255,255,.07);margin:18px 0">
+              <div class="section-head"><div><h3 style="font-size:16px">Đổi mật khẩu quản trị</h3></div></div>
+              <div class="settings-grid"><input id="oldPassword" class="input" type="password" autocomplete="current-password" placeholder="Mật khẩu hiện tại"><input id="newPassword" class="input" type="password" autocomplete="new-password" minlength="6" placeholder="Mật khẩu mới (tối thiểu 6 ký tự)"></div>
+              <button class="btn" style="margin-top:10px" onclick="changePinUI()">Đổi mật khẩu</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer"><span id="footerName">Đặt Sân Cầu Lông</span> • Firebase • GitHub Pages • quản lý lịch sân</footer>
+  </div>
+
+  <div id="modalRoot"></div>
+  <div id="toastWrap" class="toast-wrap"></div>
+
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-functions-compat.js"></script>
+<script src="./firebase-config.js"></script>
+<script src="./app-core.js"></script>
+<script src="./app-admin.js"></script>
+</body>
+</html>
